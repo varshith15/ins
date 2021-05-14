@@ -457,11 +457,14 @@ void InsNodeImpl::HeartBeatForReadCallback(
         }
         else {
             context->succ_count += 1;
+            LOG(DEBUG,"HEARTBEAT 0 - %u", context->succ_count);
         }
     } else {
         context->err_count += 1;
     }
+    LOG(DEBUG,"HEARTBEAT 1 - %u", context->succ_count);
     if (context->succ_count > members_.size() / 2) {
+        LOG(DEBUG,"HEARTBEAT 2 - %u", context->succ_count);
         const std::string& key = context->request->key();
         const std::string& uuid = context->request->uuid();
         LOG(DEBUG, "client get key: %s", key.c_str());
@@ -664,8 +667,10 @@ void InsNodeImpl::TryToBeLeader() {
 void InsNodeImpl::DoAppendEntries(const ::galaxy::ins::AppendEntriesRequest* request,
                                   ::galaxy::ins::AppendEntriesResponse* response,
                                   ::google::protobuf::Closure* done) {
+    LOG(DEBUG,"APPENDENTRIES CKPT 3");
     MutexLock lock(&mu_);
     if (request->term() >= current_term_) {
+        LOG(DEBUG,"APPENDENTRIES CKPT 4");
         status_ = kFollower;
         if (request->term() > current_term_) {
             meta_->WriteCurrentTerm(request->term());
@@ -679,17 +684,20 @@ void InsNodeImpl::DoAppendEntries(const ::galaxy::ins::AppendEntriesRequest* req
         done->Run();
         return;
     }
-
+    LOG(DEBUG,"APPENDENTRIES CKPT 5");
     if (status_ == kFollower) {
+        LOG(DEBUG,"APPENDENTRIES CKPT 6");
         current_leader_ = request->leader_id();
         heartbeat_count_++;
         if (request->entries_size() > 0) {
+            LOG(DEBUG,"APPENDENTRIES CKPT 7");
             if (request->prev_log_index() >= binlogger_->GetLength()){
                 response->set_current_term(current_term_);
                 response->set_success(false);
                 response->set_log_length(binlogger_->GetLength());
                 LOG(INFO, "[AppendEntries] prev log is beyond");
                 done->Run();
+                LOG(DEBUG,"APPENDENTRIES CKPT 8");
                 return;
             }
 
@@ -710,6 +718,7 @@ void InsNodeImpl::DoAppendEntries(const ::galaxy::ins::AppendEntriesRequest* req
                     "term: %ld,%ld", 
                     prev_log_term, request->prev_log_term());
                 done->Run();
+                LOG(DEBUG,"APPENDENTRIES CKPT 9");
                 return;
             }
             if (commit_index_ - last_applied_index_ 
@@ -721,6 +730,7 @@ void InsNodeImpl::DoAppendEntries(const ::galaxy::ins::AppendEntriesRequest* req
                 LOG(INFO, "[AppendEntries] speed to fast, %ld > %ld",
                     request->prev_log_index(), last_applied_index_);
                 done->Run();
+                LOG(DEBUG,"APPENDENTRIES CKPT 10");
                 return;
             }
             if (binlogger_->GetLength() > request->prev_log_index() + 1) {
@@ -742,6 +752,7 @@ void InsNodeImpl::DoAppendEntries(const ::galaxy::ins::AppendEntriesRequest* req
             commit_cond_->Signal();
             LOG(DEBUG, "follower: update my commit index to :%ld", commit_index_);
         }
+        LOG(DEBUG,"APPENDENTRIES CKPT 11");
         response->set_current_term(current_term_);
         response->set_success(true);
         response->set_log_length(binlogger_->GetLength());
@@ -750,6 +761,7 @@ void InsNodeImpl::DoAppendEntries(const ::galaxy::ins::AppendEntriesRequest* req
         LOG(FATAL, "invalid status: %d", status_);
         abort();
     }
+    LOG(DEBUG,"APPENDENTRIES CKPT 12");
     return;
 }
 
@@ -757,10 +769,12 @@ void InsNodeImpl::AppendEntries(::google::protobuf::RpcController* /*controller*
                                 const ::galaxy::ins::AppendEntriesRequest* request,
                                 ::galaxy::ins::AppendEntriesResponse* response,
                                 ::google::protobuf::Closure* done) {
+    LOG(DEBUG,"APPENDENTRIES CKPT 0");
     follower_worker_.AddTask(
         boost::bind(&InsNodeImpl::DoAppendEntries, this,
                     request, response, done)
     );
+    LOG(DEBUG,"APPENDENTRIES CKPT 1");
     return;
 }
 
@@ -833,20 +847,25 @@ void InsNodeImpl::ReplicateLog(std::string follower_id) {
     replicating_.insert(follower_id);
     bool latest_replicating_ok = true;
     while (!stop_ && status_ == kLeader) {
+        LOG(DEBUG, "REPLICATELOG -1 %s", follower_id.c_str());
         while (!stop_ && binlogger_->GetLength() <= next_index_[follower_id]) {
+            LOG(DEBUG, "REPLICATELOG -0.5 %s", follower_id.c_str());
             LOG(DEBUG, "no new log entry for %s", follower_id.c_str());
             replication_cond_->TimeWait(2000);
             if (status_ != kLeader) {
                 break;
             }
         }
+        LOG(DEBUG, "REPLICATELOG 0 %s", follower_id.c_str());
         if (stop_) {
             break;
         }
+        LOG(DEBUG, "REPLICATELOG 0.1 %s", follower_id.c_str());
         if (status_ != kLeader) {
             LOG(INFO, "stop realicate log, no longger leader"); 
             break;
         }
+        LOG(DEBUG, "REPLICATELOG 0.2 %s", follower_id.c_str());
         int64_t index = next_index_[follower_id];
         int64_t cur_term = current_term_;
         int64_t prev_index = index - 1;
@@ -855,11 +874,13 @@ void InsNodeImpl::ReplicateLog(std::string follower_id) {
         int64_t batch_span = binlogger_->GetLength() - index;
         batch_span = std::min(batch_span, 
                               static_cast<int64_t>(FLAGS_log_rep_batch_max));
+        LOG(DEBUG, "REPLICATELOG 0.3 %s", follower_id.c_str());
         if (!latest_replicating_ok) {
             batch_span = std::min(1L, batch_span);
         }
         std::string leader_id = self_id_;
         LogEntry prev_log_entry;
+        LOG(DEBUG, "REPLICATELOG 0.4 %s", follower_id.c_str());
         if (prev_index > -1) {
             bool slot_ok = binlogger_->ReadSlot(prev_index, &prev_log_entry);
             if (!slot_ok) {
@@ -868,9 +889,10 @@ void InsNodeImpl::ReplicateLog(std::string follower_id) {
                 break;
             }
             prev_term = prev_log_entry.term;
-        } 
+        }
+        LOG(DEBUG, "REPLICATELOG 0.5 %s", follower_id.c_str());
         mu_.Unlock();
-
+        LOG(DEBUG, "REPLICATELOG 0.6 %s", follower_id.c_str());
         InsNode_Stub* stub;
         int64_t max_term = -1;
         rpc_client_.GetStub(follower_id, &stub);
@@ -882,6 +904,7 @@ void InsNodeImpl::ReplicateLog(std::string follower_id) {
         request.set_prev_log_term(prev_term);
         request.set_leader_commit_index(cur_commit_index);
         bool has_bad_slot = false;
+        LOG(DEBUG, "REPLICATELOG 0.7 %s", follower_id.c_str());
         for (int64_t idx = index; idx < (index + batch_span); idx++) {
             LogEntry log_entry;
             bool slot_ok = binlogger_->ReadSlot(idx, &log_entry);
@@ -898,18 +921,22 @@ void InsNodeImpl::ReplicateLog(std::string follower_id) {
             entry->set_user(log_entry.user);
             max_term = std::max(max_term, log_entry.term);
         }
+        LOG(DEBUG, "REPLICATELOG 0.8 %s", follower_id.c_str());
         if (has_bad_slot) {
             LOG(FATAL, "bad slot, can't replicate on server: %s", follower_id.c_str());
             mu_.Lock();
             break;
         }
+        LOG(DEBUG, "REPLICATELOG 0.9 %s", follower_id.c_str());
         bool ok = rpc_client_.SendRequest(stub, 
                                           &InsNode_Stub::AppendEntries,
                                           &request,
                                           &response,
                                           60, 1);
+        LOG(DEBUG, "REPLICATELOG 1 %s", follower_id.c_str());
         mu_.Lock();
         mu_.AssertHeld();
+        LOG(DEBUG, "REPLICATELOG 2 %s", follower_id.c_str());
         if (ok && response.current_term() > current_term_) {
             TransToFollower("InsNodeImpl::ReplicateLog", 
                             response.current_term());
@@ -962,11 +989,13 @@ void InsNodeImpl::Get(::google::protobuf::RpcController* controller,
     SampleAccessLog(controller, "Get");
     perform_.Get();
     MutexLock lock(&mu_);
+    LOG(DEBUG,"CHECKPOINT 0");
     if (status_ == kFollower) {
         response->set_hit(false);
         response->set_leader_id(current_leader_);
         response->set_success(false);
         done->Run();
+        LOG(DEBUG,"CHECKPOINT 1");
         return;
     }
 
@@ -975,6 +1004,7 @@ void InsNodeImpl::Get(::google::protobuf::RpcController* controller,
         response->set_leader_id("");
         response->set_success(false);
         done->Run();
+        LOG(DEBUG,"CHECKPOINT 2");
         return;
     }
 
@@ -984,6 +1014,7 @@ void InsNodeImpl::Get(::google::protobuf::RpcController* controller,
         response->set_leader_id("");
         response->set_success(false);
         done->Run();
+        LOG(DEBUG,"CHECKPOINT 3");
         return;
     }
 
@@ -994,6 +1025,7 @@ void InsNodeImpl::Get(::google::protobuf::RpcController* controller,
         response->set_success(false);
         response->set_uuid_expired(true);
         done->Run();
+        LOG(DEBUG,"CHECKPOINT 4");
         return;
     }
 
@@ -1011,12 +1043,17 @@ void InsNodeImpl::Get(::google::protobuf::RpcController* controller,
         boost::function<void (const ::galaxy::ins::AppendEntriesRequest*,
                               ::galaxy::ins::AppendEntriesResponse*,
                               bool, int) > callback;
+        LOG(DEBUG,"CHECKPOINT 5");
         callback = boost::bind(&InsNodeImpl::HeartBeatForReadCallback, this,
                                _1, _2, _3, _4, context);
+        LOG(DEBUG,"CHECKPOINT 6");
         for(; it!= members_.end(); it++) { // make sure I am still leader
+            std::string temp_del = *it;
+            LOG(DEBUG,"CHECKPOINT 7 - %s", temp_del.c_str());
             if (*it == self_id_) {
                 continue;
             }
+            LOG(DEBUG,"CHECKPOINT 8 - %s", temp_del.c_str());
             InsNode_Stub* stub;
             rpc_client_.GetStub(*it, &stub);
             ::galaxy::ins::AppendEntriesRequest* request = 
@@ -1026,10 +1063,13 @@ void InsNodeImpl::Get(::google::protobuf::RpcController* controller,
             request->set_term(current_term_);
             request->set_leader_id(self_id_);
             request->set_leader_commit_index(commit_index_);
+            LOG(DEBUG,"CHECKPOINT 9 - %s", temp_del.c_str());
             rpc_client_.AsyncRequest(stub, &InsNode_Stub::AppendEntries, 
                                      request, response, callback, 2, 1);
+            LOG(DEBUG,"CHECKPOINT 10 - %s", temp_del.c_str());
         }
     } else {
+        LOG(DEBUG,"CHECKPOINT 11 - %s");
         mu_.Unlock();
         std::string key = request->key();
         Status s;
@@ -1121,23 +1161,29 @@ void InsNodeImpl::Put(::google::protobuf::RpcController* controller,
                       const ::galaxy::ins::PutRequest* request,
                       ::galaxy::ins::PutResponse* response,
                       ::google::protobuf::Closure* done) {
+    LOG(DEBUG,"In Put1");
     SampleAccessLog(controller, "Put");
+    LOG(DEBUG,"In Put1.5");
     perform_.Put();
     MutexLock lock(&mu_);
+    LOG(DEBUG,"In Put2");
     if (status_ == kFollower) {
         response->set_success(false);
         response->set_leader_id(current_leader_);
         done->Run();
         return;
     }
-
+    LOG(DEBUG,"In Put2.5");
     if (status_ == kCandidate) {
         response->set_success(false);
         response->set_leader_id("");
         done->Run();
         return;
     }
-
+//    response->set_success(true);
+//    done->Run();
+//    return;
+    LOG(DEBUG,"In Put2.6");
     if (client_ack_.size() > static_cast<size_t>(FLAGS_max_write_pending)) {
         LOG(WARNING, "write pending size: %d", client_ack_.size());
         response->set_success(false);
@@ -1145,7 +1191,7 @@ void InsNodeImpl::Put(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-
+    LOG(DEBUG,"In Put2.8");
     const std::string& uuid = request->uuid();
     if (!uuid.empty() && !user_manager_->IsLoggedIn(uuid)) {
         response->set_success(false);
@@ -1154,10 +1200,11 @@ void InsNodeImpl::Put(::google::protobuf::RpcController* controller,
         done->Run();
         return;
     }
-    
+    LOG(DEBUG,"In Put4");
     const std::string& key = request->key();
     const std::string& value = request->value();
     LOG(DEBUG, "client want put key :%s", key.c_str());
+    LOG(DEBUG,"In Put5");
     LogEntry log_entry;
     log_entry.user = user_manager_->GetUsernameFromUuid(uuid);
     log_entry.key = key;
@@ -1169,10 +1216,13 @@ void InsNodeImpl::Put(::google::protobuf::RpcController* controller,
     ClientAck& ack = client_ack_[cur_index];
     ack.done = done;
     ack.response = response;
+    LOG(DEBUG,"In Put6");
     replication_cond_->Broadcast();
+    LOG(DEBUG,"In Put7");
     if (single_node_mode_) { //single node cluster
         UpdateCommitIndex(binlogger_->GetLength() - 1);
     }
+    LOG(DEBUG,"In Put8");
     return;
 }
 

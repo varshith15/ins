@@ -59,6 +59,7 @@ CLIENT_OBJ = $(patsubst %.cc, %.o, src/client/ncli.cc)
 INS_CLI_OBJ = $(patsubst %.cc, %.o, src/client/ins_cli.cc)
 
 SAMPLE_OBJ = $(patsubst %.cc, %.o, src/client/sample.cc)
+BENCHMARK_OBJ = $(patsubst %.cc, %.o, src/client/bench.cc)
 
 CXX_SDK_SRC = src/sdk/ins_sdk.cc
 CXX_SDK_OBJ = $(patsubst %.cc, %.o, $(CXX_SDK_SRC))
@@ -81,12 +82,12 @@ TEST_USER_MANAGER_SRC = src/test/user_manage_test.cc src/server/user_manage.cc
 TEST_USER_MANAGER_OBJ = $(patsubst %.cc, %.o, $(TEST_USER_MANAGER_SRC))
 
 OBJS = $(PROTO_OBJ) $(COMMON_OBJ) $(FLAGS_OBJ) $(NEXUS_NODE_OBJ) \
-	   $(CLIENT_OBJ) $(INS_CLI_OBJ) $(SAMPLE_OBJ) \
+	   $(CLIENT_OBJ) $(INS_CLI_OBJ) $(SAMPLE_OBJ) $(BENCHMARK_OBJ)\
        $(CXX_SDK_OBJ) $(PYTHON_SDK_OBJ) $(TEST_BINLOG_OBJ) $(TEST_PERFORMANCE_OBJ) \
        $(TEST_STORAGE_MANAGER_OBJ) $(TEST_USER_MANAGER_OBJ)
 DEPS = $(patsubst %.o, %.d, $(OBJS))
 TESTS = test_binlog test_performance_center test_storage_manager test_user_manager
-BIN = nexus ncli ins_cli sample
+BIN = nexus ncli ins_cli sample bench
 LIB = libins_sdk.a
 PYTHON_LIB = libins_py.so
 
@@ -122,6 +123,9 @@ ins_cli: $(INS_CLI_OBJ) libins_sdk.a
 
 sample: $(SAMPLE_OBJ) libins_sdk.a
 	$(CXX) $(SAMPLE_OBJ) -o $@ -L. -lins_sdk $(LDFLAGS)
+
+bench: $(BENCHMARK_OBJ) libins_sdk.a
+	$(CXX) $(BENCHMARK_OBJ) -o $@ -L. -lins_sdk $(LDFLAGS)
 
 libins_sdk.a: $(CXX_SDK_OBJ) $(COMMON_OBJ) $(FLAGS_OBJ) $(PROTO_OBJ)
 	ar -rs $@ $^

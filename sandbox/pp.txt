@@ -1,0 +1,60 @@
+24a26349193e21228ddc50830532cc46be7fa2876fe4c17c1a199a856143a17e
+c2a0f2cbc23cc992e6036346774ce5d032a8098259a9e9c8cc81de19cd47fe20
+9a4e93b8119cf8cbcc6d0038a5bb44af42dda88bcd5fff045c4d1ff3cd4e47bd
+  server node    role      term  last_log_index  last_log_term  commit_index  last_applied
+--------------------------------------------------------------------------------------------
+  varshith:8868  Leader    13    0               13             0             0
+  varshith:8869  Follower  13    0               13             0             0
+  varshith:8870  Follower  13    0               13             0             0
+write test
+total time taken: 5.829983
+  server node    role      term  last_log_index  last_log_term  commit_index  last_applied
+--------------------------------------------------------------------------------------------
+  varshith:8868  Leader    13    10000           13             10000         10000
+  varshith:8869  Follower  13    10000           13             10000         10000
+  varshith:8870  Follower  13    10000           13             10000         10000
+Count: 10000
+{'Avg': 583, 'median': 576, 'p90': 659, 'p95': 686, 'p99': 754, 'p99.9': 1516, 'p99.99': 6181}
+read test
+total time taken: 1.235248
+keys found: 10000
+  server node    role      term  last_log_index  last_log_term  commit_index  last_applied
+--------------------------------------------------------------------------------------------
+  varshith:8868  Leader    13    10000           13             10000         10000
+  varshith:8869  Follower  13    10000           13             10000         10000
+  varshith:8870  Follower  13    10000           13             10000         10000
+Count: 10000
+{'Avg': 111, 'median': 105, 'p90': 118, 'p95': 123, 'p99': 362, 'p99.9': 483, 'p99.99': 660}
+one
+two
+three
+74510bb3f2b0ecb1b085a8376f71287359c9a584404c49dc9daf1204fac452f7
+e05dbe69f0d89c83e50f2e205a12c26603cc6fb172bfd3b5c7c613d1ff5cd56d
+3f66377879bdca5f4aa0f921f2b11d9b7b203a23fea52c9ce542b906bc80e99b
+  server node    role      term  last_log_index  last_log_term  commit_index  last_applied
+--------------------------------------------------------------------------------------------
+  varshith:8868  Leader    19    3               19             2             2
+  varshith:8869  Follower  19    2               17             2             2
+  varshith:8870  Follower  19    3               18             2             2
+write test
+total time taken: 9.123078
+  server node    role      term  last_log_index  last_log_term  commit_index  last_applied
+--------------------------------------------------------------------------------------------
+  varshith:8868  Leader    31    10009           31             10009         10009
+  varshith:8869  Follower  31    10009           31             10009         10009
+  varshith:8870  Follower  31    6755            27             6755          587
+Count: 10000
+{'Avg': 912, 'median': 452, 'p90': 510, 'p95': 671, 'p99': 1534, 'p99.9': 2010, 'p99.99': 2007437}
+read test
+total time taken: 5.194999
+keys found: 10000
+  server node    role      term  last_log_index  last_log_term  commit_index  last_applied
+--------------------------------------------------------------------------------------------
+  varshith:8868  Leader    59    10016           59             10016         10016
+  varshith:8869  Follower  59    10016           59             10016         10016
+  varshith:8870  Follower  59    8753            27             8753          839
+Count: 10000
+{'Avg': 497, 'median': 179, 'p90': 347, 'p95': 370, 'p99': 433, 'p99.9': 679, 'p99.99': 1001723}
+one
+two
+three

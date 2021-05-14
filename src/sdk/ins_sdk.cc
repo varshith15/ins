@@ -1,5 +1,6 @@
 #include "ins_sdk.h"
 
+#include <iostream>
 #include <assert.h>
 #include <algorithm>
 #include <iterator>
@@ -212,6 +213,11 @@ std::string InsSDK::ErrorToString(SDKError error) {
 bool InsSDK::Put(const std::string& key, const std::string& value, SDKError* error) {
     std::vector<std::string> server_list;
     PrepareServerList(server_list);
+//    std::vector<std::string>::const_iterator it1;
+//    for (it1 = server_list.begin(); it1 != server_list.end(); it1++) {
+//        std::string server_id = *it1;
+//        std::cout<<server_id<<std::endl;
+//    }
     SDKError err_temp = kOK;
     if (error == NULL) {
         error = &err_temp;
@@ -219,6 +225,7 @@ bool InsSDK::Put(const std::string& key, const std::string& value, SDKError* err
     std::vector<std::string>::const_iterator it ;
     for (it = server_list.begin(); it != server_list.end(); it++){
         std::string server_id = *it;
+//        std::cout<<server_id<<std::endl;
         LOG(DEBUG, "rpc to %s", server_id.c_str());
         galaxy::ins::InsNode_Stub *stub, *stub2;
         rpc_client_->GetStub(server_id, &stub);
@@ -230,8 +237,10 @@ bool InsSDK::Put(const std::string& key, const std::string& value, SDKError* err
         }
         request.set_key(key);
         request.set_value(value);
+        int64_t start = ins_common::timer::get_micros();
         bool ok = rpc_client_->SendRequest(stub, &InsNode_Stub::Put,
                                           &request, &response, 2, 1);
+//        fprintf(stderr,"%s %lld\n",server_id.c_str(),ins_common::timer::get_micros()-start);
         if (!ok) {
             LOG(FATAL, "faild to rpc %s", server_id.c_str());
             continue;
@@ -249,9 +258,13 @@ bool InsSDK::Put(const std::string& key, const std::string& value, SDKError* err
                     MutexLock lock(mu_);
                     loggin_expired_ = true;
                 }
+                LOG(DEBUG,"checkpoint 1");
+//                std::cout<<"checkpoint 1"<<std::endl;
                 return false;
             }
             *error = kOK;
+            LOG(DEBUG,"checkpoint 2");
+//            std::cout<<"checkpoint 2"<<std::endl;
             return true;
         } else {
             if (!response.leader_id().empty()) {
@@ -272,13 +285,19 @@ bool InsSDK::Put(const std::string& key, const std::string& value, SDKError* err
                             MutexLock lock(mu_);
                             loggin_expired_ = true;
                         }
+                        LOG(DEBUG,"checkpoint 3");
+//                        std::cout<<"checkpoint 3"<<std::endl;
                         return false;
                     }
                     *error = kOK;
+                    LOG(DEBUG,"checkpoint 4");
+//                    std::cout<<"checkpoint 4"<<std::endl;
                     return true;
                 }
             }
         }
+        LOG(DEBUG,"checkpoint 5");
+//        std::cout<<"checkpoint 5"<<std::endl;
         ThisThread::Sleep(1000);
     }
     *error = kClusterDown;
