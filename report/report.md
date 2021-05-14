@@ -13,17 +13,18 @@ And in the end we are going to explore performance of a three node cluster in th
 
 ## Setup
 ### Normal cluster
-The setup for a normal cluster situation is pretty straight-forward. There are three docker containers running on the same machine where each docker container acts as a node. I went for docker containers because it is easy to control the resources allocated to that container. And all the containers run on host network. And all the dockers have a cpu usage limit of 1.
+The setup for a normal cluster situation is pretty straight-forward. There are three docker containers running on the same machine where each docker container acts as a node. I went for docker containers because it is easy to control the resources allocated to that container. And all the containers run on host network. And all the dockers have a cpu usage limit of 1.5 
 
 ### Slow follower
-To simulate a slow follower, one of the container in the normal cluster has a cpu usage limit as 0.02 which is 50 times less than the other containers.
+To simulate a slow follower, one of the container in the normal cluster has a cpu usage limit as 0.02 which is 75 times less than the other containers.
 
 ### Slow Network
 To simulate a slow network, Instead of the containers being on host network, they are connected using a bridge network.
 Packet delay is introduced to the said bridge network using netem.
 
 ### Client
-Client is run on the local machine. Client sends requests synchronously. It has only one thread and one connection to the server. The client sends the request to the first node, if the said node is the leader the node goes through the request or else it responds to the client with the address of the leader and client sends the same request again to the leader. The same process goes on for each request, leaders address is not saved. 
+Client is run on the local machine. Client sends requests synchronously. It has only one thread and one connection to the server. The client sends the request to the first node, if the said node is the leader the node goes through the request or else it responds to the client with the address of the leader and client sends the same request again to the leader. 
+The same process goes on for each request, and the request is first sent to the last successful address.
 
 ## Code Flow
 ### Initialization / Election
@@ -33,7 +34,7 @@ Client is run on the local machine. Client sends requests synchronously. It has 
 - The node is first initialized and all the checks related to cluster are done and database is created.
 - There are three main threads running parallelly
   1. CommitIndexObserve() - Applies the unapplied but committed log indices.
-  2. ReplicateLog() - Sends sync calls asking follower nodes to append log entries. Each follower has a separate thread running.
+  2. ReplicateLog() - Sends sync calls asking follower nodes to append log entries. For each follower a separate thread is run.
   3. BroadcastHeartbeat() - Broadcasts heartbeat to the followers to check if they are alive.
     
 - The leader sends an empty append entries request which calls back to HeartbeatCallback where it checks if majority of followers respond. If not its transferred to follower. 
@@ -72,7 +73,7 @@ Client is run on the local machine. Client sends requests synchronously. It has 
 The script for the above can be found [here](./../sandbox/slow_node/slow_node.sh)
 
 #### Results
-I found something wrong in the code logic which I am assuming is a bug which causes in inconsistency in results from time to time. We will get into the bug at the end but for now these are the results when the bug is not encountered. 
+I found something wrong in the code logic which I am assuming is a bug which caused in inconsistency in results from time to time. We will get into the bug at the end but for now these are the results when the bug is not encountered. 
 
 
 The following results are based on the fact that the leader
@@ -136,27 +137,27 @@ All the logs related to above experiment can be found [here](./../sandbox/slow_n
 
 Lot of the times the slow node  doesn't receive a heartbeat
 from the leader which makes it believe that the leader is not active
-so it increases its term and broadcasts requests to all the nodes
-asking for a Vote and if it gets a response(which is not sure as it doesn't receive responses a lot of the times) it is a false response as its log is not upto date.
-And if it doesn't get responses it will increase its term and keep sending the Vote broadcasts.
+so it increases its election term and broadcasts requests to all the nodes
+asking for a Vote and if it gets a response it will a negative response as its logs are not upto date.
+And if it doesn't get responses it will increase its election term and keep sending the Vote broadcasts.
 
-Usually this shouldn't be an issue, The other nodes should keep sending false responses 
+Usually this shouldn't be an issue, The other nodes keep sending negative responses 
 as the slow nodes log is not up to date and as the majority of the nodes which is
 two here are alive and up to date as they are not slow.
 
 Now the issue in the code is that, when the leader sends replication
 requests and slow node receives it and responds back with its current term.
 There is a check in the code that if the term of the follower which is retrieved 
-from the response is higher that the current leaders term, the leader's status is changed to follower
+from the response is higher than the current leaders term, the leader's status is changed to follower
 but the current_leader_id is not updated,
 which leaves the cluster leader less and after a while election is triggered by one of the node as the heartbeats are not received by any of the nodes.
 
-When the cluster is leader less than and the client sends a request to the leader which is now a 
+When the cluster is leader less and the client sends a request at the same time to the leader which is now a 
 follower responds back with the leader_id which is itself. Which causes a loop till the leader gets elected.
 
 There are a few other places in the code where the same issue may arise.
 
-The issue discussed above happens when the slow node receives the replicate request and the 
+The issue discussed above happens when the slow node receives the replicate request and responds back and the 
 current term of the slow node is higher than the leader which is highly plausible as it keeps for broadcasting for votes and increasing its term.
 
 The following are the results when this bug is experienced
