@@ -1,4 +1,4 @@
-#Ins Report
+# Ins Report
 
 Ins is a highly available key-value store based on raft protocol. Written in C++. Ins supports Leader Election, Log Replication and Log Compaction. 
 But in this report we are going to explore the following areas:
@@ -11,7 +11,7 @@ And in the end we are going to explore performance of a three node cluster in th
 1. Slow follower
 2. Slow network
 
-##Setup
+## Setup
 ### Normal cluster
 The setup for a normal cluster situation is pretty straight-forward. There are three docker containers running on the same machine where each docker container acts as a node. I went for docker containers because it is easy to control the resources allocated to that container. And all the containers run on host network. And all the dockers have a cpu usage limit of 1.
 
@@ -131,3 +131,87 @@ The script for the above can be found [here](./../sandbox/slow_network/slow_netw
 It is very clear from the graphs that the slow network has higher latencies. These are higher latencies and lower throughput are direct implications of the delay in the RPC requests reaching the destination.
 
 All the logs related to above experiment can be found [here](./../sandbox/slow_network/)
+
+### Slow Node - BUG
+
+Lot of the times the slow node  doesn't receive a heartbeat
+from the leader which makes it believe that the leader is not active
+so it increases its term and broadcasts requests to all the nodes
+asking for a Vote and if it gets a response(which is not sure as it doesn't receive responses a lot of the times) it is a false response as its log is not upto date.
+And if it doesn't get responses it will increase its term and keep sending the Vote broadcasts.
+
+Usually this shouldn't be an issue, The other nodes should keep sending false responses 
+as the slow nodes log is not up to date and as the majority of the nodes which is
+two here are alive and up to date as they are not slow.
+
+Now the issue in the code is that, when the leader sends replication
+requests and slow node receives it and responds back with its current term.
+There is a check in the code that if the term of the follower which is retrieved 
+from the response is higher that the current leaders term, the leader's status is changed to follower
+but the current_leader_id is not updated,
+which leaves the cluster leader less and after a while election is triggered by one of the node as the heartbeats are not received by any of the nodes.
+
+When the cluster is leader less than and the client sends a request to the leader which is now a 
+follower responds back with the leader_id which is itself. Which causes a loop till the leader gets elected.
+
+There are a few other places in the code where the same issue may arise.
+
+The issue discussed above happens when the slow node receives the replicate request and the 
+current term of the slow node is higher than the leader which is highly plausible as it keeps for broadcasting for votes and increasing its term.
+
+The following are the results when this bug is experienced
+
+#### Write 
+
+
+##### Latency Comparision
+![bug](./slow_node_write_combine.png)
+
+Both the images are same, one is without p99.99. 
+
+As you can the p99.99 of the slow node case is almost 30 times higher than
+that of the normal node case. There is a bump is only p99.99 because the requests are
+sent synchronously in this case so only few requests face issue due to the bug discussed above.
+
+##### Latency Scatter Plot (Normal Node Case)
+![sn1](./sn_normal_write_bug.png)
+
+This is the normal node case where the above discussed bug doesn't occurs as no slow node.
+
+The above images are as follows:
+1. Latency vs Time (Actual y scale)
+2. Latency vs Time ([0, 0.005] y scale)
+3. Latency vs Request Number (Actual y scale)
+4. Latency vs Request Number ([0, 0.005] y scale)
+
+##### Latency Scatter Plot (Slow Node Case)
+
+![sn2](./sn_slow_write_bug.png)
+
+This is the slow node case where the above discussed bug occurs as there is a slow node.
+The above images are as follows:
+1. Latency vs Time (Actual y scale)
+2. Latency vs Time ([0, 0.005] y scale for better visualisation)
+3. Latency vs Request Number (Actual y scale)
+4. Latency vs Request Number ([0, 0.005] y scale for better visualisation)
+
+
+Now if we compare Latency vs Time ([0, 0.005] y scale) plot in the above images. We can observe that there are gaps
+in the slow node case which are caused due to the bug discussed above.
+
+In the client side code, The client sends a request and if the response is an 
+address to the leader, it retries sending the same request to the leader. And if any of 
+those request responses are negative the client sleeps for 1s. 
+
+In the image 2 of slow node case we can see a 2 sec gap which is caused by a 2 sec latency request which means that the client 
+sends a request gets a negative response sleeps for 1 sec and then retries again
+and gets a negative response again and sleeps 1 sec again.
+
+Similarly with the 1 sec gap.
+
+#### Fix
+
+The fix for the bug is that instead of just comparing election terms, the last committed index
+and the last applied index of the leader and follower which sends response 
+should be checked before changing the status of the leader to follower. Just like
+the rules applied while voting.
