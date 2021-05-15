@@ -77,7 +77,7 @@ I found something wrong in the code logic which I am assuming is a bug which cau
 
 
 The following results are based on the fact that the leader
-generally fails receive an ack response from slower nodes 
+generally fails receive an ack response from slower nodes before the request timesout
 which is expected.
 
 ##### Read
@@ -99,7 +99,7 @@ So it's basically a single client - server type setup. As the leader nodes act a
 
 As we can see the latency for the slower follower case is lesser than the normal follower case but the difference is very small considering we are dealing with micro seconds here.
 
-The reason for this is that the leader generally fails receive an ack response for the replication request it sends to slow follower which is expected, In the code as discussed in the Put Query part of the report there is one thread each running parallelly for sending replication requests to each of the follower and if the follower fails to ack the request back to the leader, the thread sending these replication requests to the follower goes into hibernation(Thread sleeps) for a while.
+The reason for this is that the leader generally fails receive an ack response for the replication request it sends to slow follower before the timeout which is expected, In the code as discussed in the Put Query part of the report there is one thread each running parallelly for sending replication requests to each of the follower and if the follower fails to ack the request back to the leader before it timesout, the thread sending these replication requests to the follower goes into hibernation(Thread sleeps) for a while.
 
 When the thread sending replication requests to the slower node goes into hibernation the load the leader has to push decreases. So now it just has to send replication requests to one follower which reduces the total RPCs to send which in turn results in the reduced latencies.  
 
@@ -135,7 +135,7 @@ All the logs related to above experiment can be found [here](./../sandbox/slow_n
 
 ### Slow Node - BUG
 
-Lot of the times the slow node  doesn't receive a heartbeat
+Lot of the times the slow node doesn't receive a heartbeat before the timeout
 from the leader which makes it believe that the leader is not active
 so it increases its election term and broadcasts requests to all the nodes
 asking for a Vote and if it gets a response it will a negative response as its logs are not upto date.
